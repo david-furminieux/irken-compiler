@@ -173,7 +173,6 @@ Usage: compile <irken-src-file> [options]
       -> (begin (o.copy part0)
 		(emit-constructed o context)
 		(if context.options.profile (emit-profile-0 o context))
-		(emit-registers o context)
 		(o.copy part1)
 		(o.copy part2)
 		(emit o cps context)))

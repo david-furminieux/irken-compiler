@@ -1,3 +1,7 @@
+[This branch tries to put all the registers along with lenv, k & top
+into local register variables.  It *kinda* works, but only for small
+programs.  Compiling the compiler causes clang to crash after 24m]
+
 Irken is a statically-typed, simplified variant of Scheme.  Or, a lisp-like variant of ML.
 
 Why: to host massively scalable systems scriptable via a python-like language.

@@ -130,49 +130,6 @@ do_gc (int nroots)
   return (object) box (freep - heap0);
 }
 
-object
-gc_flip (int nregs)
-{
-  object nwords;
-  // copy roots
-  heap1[0] = (object) lenv;
-  heap1[1] = (object) k;
-  heap1[2] = (object) top;
-  //assert (freep < (heap0 + heap_size));
-  gc_regs_in (nregs);
-  nwords = do_gc (nregs + 3);
-  // replace roots
-  lenv = (object *) heap0[0];
-  k    = (object *) heap0[1];
-  top  = (object *) heap0[2];
-  gc_regs_out (nregs);
-  // set new limit
-  limit = heap0 + (heap_size - 1024);
-  return nwords;
-}
-
-// exactly the same, except <thunk> is an extra root.
-// Warning: dump_image() knows how many roots are used here.
-object *
-gc_dump (object * thunk)
-{
-  // copy roots
-  heap1[0] = (object) lenv;
-  heap1[1] = (object) k;
-  heap1[2] = (object) top;
-  heap1[3] = (object) thunk;
-  do_gc (4);
-  // replace roots
-  lenv  = (object *) heap0[0];
-  k     = (object *) heap0[1];
-  top   = (object *) heap0[2];
-  thunk = (object *) heap0[3];
-  // set new limit
-  limit = heap0 + (heap_size - 1024);
-  return thunk;
-}
-
-
 void adjust (object * q, pxll_int delta)
 {
   if ((*q) && (!IMMEDIATE(*(q)))) {

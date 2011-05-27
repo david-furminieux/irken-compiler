@@ -276,7 +276,9 @@
 	      (o.write (format "prof_current_fun = " (int (car fun-stack)) ";"))
 	      (o.write "prof_funs[prof_current_fun].calls++;"))
 	(if (vars-get-flag context name VFLAG-ALLOCATES)
-	    (o.write "check_heap (0);"))
+	    ;;(o.write "check_heap (0);")
+	    (o.write (format "CHECK_HEAP (0, " (label-maker) ");"))
+	    )
 	(when context.options.profile
 	      ;; this avoids charging gc to this fun
 	      (o.write "prof_mark0 = rdtsc();"))
@@ -513,7 +515,7 @@
 						       ")-TC_USEROBJ)>>2," (int label-code)
 						       ")] = r" (int arg-reg) ";"))))
 			    _ _ -> (primop-error))
-	  '%ensure-heap -> (o.write (format "ensure_heap (" (int (length (k/free k))) ", unbox(r" (int (car args)) "));"))
+	  '%ensure-heap -> (o.write (format "ENSURE_HEAP (" (int (length (k/free k))) ", unbox(r" (int (car args)) ")," (label-maker) ");"))
 	  '%callocate -> (let ((type (parse-type parm))) ;; gets parsed twice, convert to %%cexp?
 			   ;; XXX maybe make alloc_no_clear do an ensure_heap itself?
 			   (if (>= target 0)
@@ -674,7 +676,67 @@
 	(o.write "}")))
 
     ;; body of emit
-    (o.indent)
+
+    (let ((nreg (+ 1 (context.regalloc.get-max))))
+      (o.copy "
+  pxll_int
+  vm (int argc, char * argv[])
+  {
+    int i; // loop counter
+    register object * lenv = PXLL_NIL;
+    register object * k = PXLL_NIL;
+    register object * top = PXLL_NIL; // top-level (i.e. 'global') environment
+    register object * t = 0; // temp - for swaps & building tuples
+    object * result;
+    void * gc_return;
+    int gc_roots;
+    int64_t t0;
+  ")
+      (o.indent)
+      (for-range
+	  i nreg
+	  (o.write (format "register object * r" (int i) ";")))
+      (o.copy "
+  limit = heap0 + (heap_size - head_room);
+  freep = heap0;  
+
+  goto start;
+
+  // GC entry/exit
+  gc_flip:
+
+  t0 = rdtsc();
+  heap1[0] = lenv;
+  heap1[1] = k;
+  heap1[2] = top;
+  ")
+      (o.write "  switch (gc_roots) {")
+      (for-each
+       (lambda (i)
+	 (o.write (format "  case " (int (+ i 1)) ": heap1[" (int (+ i 3)) "] = r" (int i) ";")))
+       (reverse (range nreg)))
+      (o.write "}")
+      (o.write "do_gc (gc_roots + 3);")
+      (o.write "  switch (gc_roots) {")
+      (for-each
+       (lambda (i)
+	 (o.write (format "  case " (int (+ i 1)) ": r" (int i) " = heap0[" (int (+ i 3)) "];")))
+       (reverse (range nreg)))
+      (o.write "}"))
+    (o.copy "
+  lenv = heap0[0];
+  k    = heap0[1];
+  top  = heap0[2];
+  gc_ticks += rdtsc() - t0;
+  goto *gc_return;
+
+  start:
+  k = allocate (TC_SAVE, 3);
+  k[1] = (object *) PXLL_NIL; // top of stack
+  k[2] = (object *) PXLL_NIL; // null environment
+  k[3] = &&Lreturn; // continuation that will return from this function.
+  // --- BEGIN USER PROGRAM ---
+  ")
     (when context.options.profile
 	  (o.write "prof_current_fun = 0;") ;; entry for top is at [0]
 	  (o.write "prof_mark0 = rdtsc();"))
@@ -685,26 +747,6 @@
     (o.dedent)
     (o.write "}")
     ))
-
-(define (emit-registers o context)
-  (let ((nreg (+ 1 (context.regalloc.get-max))))
-    (for-range
-	i nreg
-	(o.write (format "static object * r" (int i) ";")))
-    (o.write "void gc_regs_in (int n) {")
-    (o.write "  switch (n) {")
-    (for-each
-     (lambda (i)
-       (o.write (format "  case " (int (+ i 1)) ": heap1[" (int (+ i 3)) "] = r" (int i) ";")))
-     (reverse (range nreg)))
-    (o.write "}}")
-    (o.write "void gc_regs_out (int n) {")
-    (o.write "  switch (n) {")
-    (for-each
-     (lambda (i)
-       (o.write (format "  case " (int (+ i 1)) ": r" (int i) " = heap0[" (int (+ i 3)) "];")))
-     (reverse (range nreg)))
-    (o.write "}}")))
 
 (define (emit-profile-0 o context)
   (o.write "

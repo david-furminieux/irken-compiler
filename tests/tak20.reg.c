@@ -1,7 +1,15 @@
 
-#include "pxll.h"
+// This is a hand-rolled version that successfully moves freep & limit
+//   into a local variable as well.  However, the macro versions of
+//   of allocate & alloc_no_clear seem to have slowed it down.
+//
+// Numbers:
+// global everything: 1000
+// local registers:    760
+// local freep&limit:  800
+//
 
-// hacked for local-reg
+#include "pxll.h"
 
 static int lookup_field (int tag, int label);
 
@@ -408,47 +416,41 @@ main (int argc, char * argv[])
 }
 
 // REGISTER_DECLARATIONS //
+pxll_int pxll_internal_symbols[] = {(0<<8)|TC_VECTOR, };
 
 // CONSTRUCTED LITERALS //
+
 
 static object * freep;
 static object * limit;
 
 #include "gc.c"
 
-static object *
-allocate (pxll_int tc, pxll_int size)
-{
-  object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
-#if 1
-  // at least on the g5, this technique is considerably faster than using memset
-  //   in gc_flip() to 'pre-clear' the heap... probably a cache effect...
-  while (size--) {
-    // this keeps gc from being confused by partially-filled objects.
-    *(++freep) = PXLL_NIL;
-  }
-  ++freep;
-#else
-  // if you use this version, be sure to set <clear_tospace>!
-  freep += size + 1;
-#endif
-  return save;  
-}
+#define PXLL_RETURN(d)	result = r##d; goto *k[3]
 
-  // this is emitted by the backend for %make-tuple
-static object *
-alloc_no_clear (pxll_int tc, pxll_int size)
-{
-  object * save = freep;
-  *freep = (object*) (size<<8 | (tc & 0xff));
-  freep += size + 1;
-  return save;  
-}
+#define ALLOCATE(tc,size)			\
+  ({						\
+  object * save = freep0;			\
+  int i;					\
+  *freep0 = (object*) (size<<8 | (tc & 0xff));	\
+  for (i=size;i;i--) {				\
+    *(++freep0) = PXLL_NIL;			\
+  }						\
+  ++freep0;					\
+  save;						\
+  })
+
+#define ALLOC_NO_CLEAR(tc, size)		\
+  ({						\
+  object * save = freep0;			\
+  *freep0 = (object*) (size<<8 | (tc & 0xff));	\
+  freep0 += size + 1;				\
+  save;						\
+  })
 
 #define CHECK_HEAP(n,lab)			\
 do {						\
-  if (freep >= limit) {				\
+  if (freep0 >= limit) {			\
     gc_roots = n;				\
     gc_return = &&lab;				\
     goto gc_flip;				\
@@ -458,17 +460,185 @@ do {						\
  }						\
 while (0)
 
-#define ENSURE_HEAP(n,size,lab)			\
-do {						\
-  if (freep + size + 1 >= limit) {		\
-    gc_roots = n;				\
-    gc_return = &&lab;				\
-    goto gc_flip;				\
-  lab:						\
-    (void)0;					\
-  }						\
- }						\
-while (0)
 
-#define PXLL_RETURN(d)	result = r##d; goto *k[3]
+pxll_int
+vm (int argc, char * argv[])
+{
+  int i; // loop counter
+  
+  register object * r0;
+  register object * r1;
+  register object * r2;
+  register object * r3;
+  register object * r4;
+  register object * lenv;
+  register object * k;
+  register object * top;
+  register object * freep0;
 
+  void * gc_return;
+  int gc_roots;
+  object * result;
+  object * t;
+  int64_t t0;
+
+  limit = heap0 + (heap_size - head_room);
+  freep0 = heap0;
+  
+  goto start;
+  
+  // GC entry/exit
+
+ gc_flip:
+
+  t0 = rdtsc();
+  freep = freep0;
+  heap1[0] = lenv;
+  heap1[1] = k;
+  heap1[2] = top;
+  switch (gc_roots) {
+  case 5: heap1[7] = r4;
+  case 4: heap1[6] = r3;
+  case 3: heap1[5] = r2;
+  case 2: heap1[4] = r1;
+  case 1: heap1[3] = r0;
+  }
+  do_gc (gc_roots + 3);
+  switch (gc_roots) {
+  case 5: r4 = heap0[7];
+  case 4: r3 = heap0[6];
+  case 3: r2 = heap0[5];
+  case 2: r1 = heap0[4];
+  case 1: r0 = heap0[3];
+  }
+  lenv = heap0[0];
+  k    = heap0[1];
+  top  = heap0[2];
+  gc_ticks += rdtsc() - t0;
+  freep0 = freep;
+
+  goto *gc_return;
+  
+ start:
+  k = ALLOCATE (TC_SAVE, 3);
+  k[1] = (object *) PXLL_NIL; // top of stack
+  k[2] = (object *) PXLL_NIL; // null environment
+  k[3] = &&Lreturn; // continuation that will return from this function.
+  // --- BEGIN USER PROGRAM ---
+  r0 = ALLOCATE (TC_TUPLE, 3);
+  top = r0;
+  r0[1] = lenv; lenv = r0;
+  // def tak_12
+  goto L0;
+ FUN_tak_12:
+  CHECK_HEAP (0,FUN_tak_12_ch);
+  r0 = ((object*) lenv) [2];
+  r1 = ((object*) lenv) [3];
+  if PXLL_IS_TRUE(PXLL_TEST(unbox(r1)>=unbox(r0))) {
+    r0 = ((object*) lenv) [4];
+    PXLL_RETURN(0);
+  } else {
+    r0 = ALLOCATE (TC_TUPLE, 4);
+    r1 = (object *) 3;
+    r2 = ((object*) lenv) [3];
+    r1 = box((pxll_int)unbox(r2)-unbox(r1));
+    r0[2] = r1;
+    r1 = ((object*) lenv) [4];
+    r0[3] = r1;
+    r1 = ((object*) lenv) [2];
+    r0[4] = r1;
+    r1 = top[2];
+    t = ALLOCATE (TC_SAVE, 3);
+    t[1] = k; t[2] = lenv; t[3] = &&L1; ; k = t;
+    r0[1] = r1[2]; lenv = r0; goto FUN_tak_12;
+  L1:
+    ; lenv = k[2]; k = k[1];
+    r0 = result;
+    r1 = ALLOCATE (TC_TUPLE, 4);
+    r2 = (object *) 3;
+    r3 = ((object*) lenv) [4];
+    r2 = box((pxll_int)unbox(r3)-unbox(r2));
+    r1[2] = r2;
+    r2 = ((object*) lenv) [2];
+    r1[3] = r2;
+    r2 = ((object*) lenv) [3];
+    r1[4] = r2;
+    r2 = top[2];
+    t = ALLOCATE (TC_SAVE, 4);
+    t[1] = k; t[2] = lenv; t[3] = &&L2; t[4] = r0; k = t;
+    r1[1] = r2[2]; lenv = r1; goto FUN_tak_12;
+  L2:
+    r0 = k[4]; lenv = k[2]; k = k[1];
+    r1 = result;
+    r2 = ALLOCATE (TC_TUPLE, 4);
+    r3 = (object *) 3;
+    r4 = ((object*) lenv) [2];
+    r3 = box((pxll_int)unbox(r4)-unbox(r3));
+    r2[2] = r3;
+    r3 = ((object*) lenv) [3];
+    r2[3] = r3;
+    r3 = ((object*) lenv) [4];
+    r2[4] = r3;
+    r3 = top[2];
+    t = ALLOCATE (TC_SAVE, 5);
+    t[1] = k; t[2] = lenv; t[3] = &&L3; t[4] = r0; t[5] = r1; k = t;
+    r2[1] = r3[2]; lenv = r2; goto FUN_tak_12;
+  L3:
+    r0 = k[4]; r1 = k[5]; lenv = k[2]; k = k[1];
+    r2 = result;
+    lenv[2] = r2;
+    lenv[3] = r0;
+    lenv[4] = r1;
+    goto FUN_tak_12;
+  }
+    PXLL_RETURN(0);
+  L0:
+  r1 = ALLOCATE (TC_CLOSURE, 2);
+  r1[1] = &&FUN_tak_12; r1[2] = lenv;
+  r0[2] = r1;
+  // def loop_21
+  goto L4;
+  FUN_loop_21:
+  CHECK_HEAP(0,FUN_loop_21_ch);
+    r0 = ALLOCATE (TC_TUPLE, 2);
+    r0[1] = lenv; lenv = r0;
+    r1 = ALLOCATE (TC_TUPLE, 4);
+    r2 = (object *) 37;
+    r1[2] = r2;
+    r2 = (object *) 25;
+    r1[3] = r2;
+    r2 = (object *) 13;
+    r1[4] = r2;
+    r2 = top[2];
+    t = ALLOCATE (TC_SAVE, 4);
+    t[1] = k; t[2] = lenv; t[3] = &&L5; t[4] = r0; k = t;
+    r1[1] = r2[2]; lenv = r1; goto FUN_tak_12;
+    L5:
+    r0 = k[4]; lenv = k[2]; k = k[1];
+    r1 = result;
+    r0[2] = r1;
+    r0 = ((object**) lenv) [1][2];
+    if PXLL_IS_TRUE(PXLL_TEST(unbox(r0)==0)) {
+      r0 = ((object*) lenv) [2];
+      PXLL_RETURN(0);
+    } else {
+      r0 = (object *) 3;
+      r1 = ((object**) lenv) [1][2];
+      r0 = box((pxll_int)unbox(r1)-unbox(r0));
+      lenv = ((object *)lenv)[1];
+      lenv[2] = r0;
+      goto FUN_loop_21;
+    }
+    PXLL_RETURN(0);
+  L4:
+  r1 = ALLOCATE (TC_CLOSURE, 2);
+  r1[1] = &&FUN_loop_21; r1[2] = lenv;
+  r0[3] = r1;
+  r0 = ALLOCATE (TC_TUPLE, 2);
+  r1 = (object *) 41;
+  r0[2] = r1;
+  r1 = top[3];
+  r0[1] = r1[2]; lenv = r0; goto FUN_loop_21;
+  Lreturn:
+  return (pxll_int) result;
+}
