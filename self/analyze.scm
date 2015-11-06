@@ -18,7 +18,7 @@
       -> (let ((rator (nth exp.subs 0)))
 	   (match rator.t with
 	     (node:varref name)
-	     -> (let ((var (vars-get-var name)))
+	     -> (let ((var (vars-get-var name exp)))
 		  (cond ((member-eq? name fenv)
 			 (set! var.flags (bit-set var.flags VFLAG-RECURSIVE))
 			 (node-set-flag! exp NFLAG-RECURSIVE)))
@@ -29,11 +29,11 @@
       -> (begin
 	   (PUSH fenv name)
 	   (tree/insert! the-context.funs symbol-index<? name exp)
-	   (vars-set-flag! name VFLAG-FUNCTION))
+	   (vars-set-flag! name exp VFLAG-FUNCTION))
       ;; a convenient place to detect this.
       (node:primapp name _)
       -> (if (or (eq? name '%getcc) (eq? name '%putcc))
-	     (vars-set-flag! (car fenv) VFLAG-GETCC))
+	     (vars-set-flag! (car fenv) exp VFLAG-GETCC))
       _ -> #u)
     (for-each (lambda (x) (walk x fenv)) exp.subs))
 
@@ -116,18 +116,18 @@
 
 (define (find-refs node)
 
-  (define (add-ref name)
-    (let ((var (vars-get-var name)))
+  (define (add-ref node name)
+    (let ((var (vars-get-var name node)))
       (set! var.refs (+ 1 var.refs))))
 
-  (define (add-set name)
-    (let ((var (vars-get-var name)))
+  (define (add-set node name)
+    (let ((var (vars-get-var name node)))
       (set! var.sets (+ 1 var.sets))))
 
   (define (walk node)
     (match node.t with
-      (node:varref name) -> (add-ref name)
-      (node:varset name) -> (add-set name)
+      (node:varref name) -> (add-ref node name)
+      (node:varset name) -> (add-set node name)
       _ -> #u)
     (for-each walk node.subs))
 
@@ -137,7 +137,7 @@
 
   (define (maybe-free name locals)
     (if (not (member-eq? name locals))
-	(vars-set-flag! name VFLAG-FREEREF)))
+	(vars-set-flag! name node VFLAG-FREEREF)))
 
   (define (search node locals)
     (match node.t with
@@ -213,15 +213,15 @@
 		 -> (match (follow-aliases fenv name) with
 		      (maybe:no) -> #u
 		      (maybe:yes (:pair name fun))
-		      -> (let ((var (vars-get-var name))
+		      -> (let ((var (vars-get-var name node))
 			       (escapes (bit-get var.flags VFLAG-ESCAPES))
 			       (recursive (bit-get var.flags VFLAG-RECURSIVE))
 			       (getputcc (bit-get var.flags VFLAG-GETCC))
 			       ;; this will spin unwanted extra copies
 			       ;;(recursive (node-get-flag node NFLAG-RECURSIVE))
 			       (calls (get-fun-calls name var.calls)))
-;;                            (printf "testing " (sym name) " calls " (int calls)
-;;                                                  " escapes " (bool escapes) " recursive " (bool recursive) "\n")
+                           ;; (printf "testing " (sym name) " calls " (int calls)
+			   ;; 	   " escapes " (bool escapes) " recursive " (bool recursive) "\n")
 			   (cond ((and (function? fun)
 				       (not (eq? (string-ref (symbol->string name) 0) #\^))
 				       (not getputcc) ;; don't inline functions that use getcc/putcc
@@ -231,7 +231,7 @@
 					    (not recursive)))
 				  (if (> calls 1)
 				      (set-multiplier name calls))
-;; 				  (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
+				  ;; (printf "inline: " (sym name) " calls " (int calls)" escapes " (bool escapes) " recursive " (bool recursive) "\n")
 				  (let ((r (inline-application fun rands)))
 				    ;; record the new variables...
 				    (add-vars r)
@@ -239,7 +239,7 @@
 		 ;; always inline ((lambda (x) ...) ...)
 		 ({t=(node:function name formals) ...} . rands)
 		 -> (let ((r (inline-application (car node.subs) rands)))
-;; 		      (printf "inlined lambda: final size = " (int r.size) "\n")
+		      ;; (printf "inlined lambda: final size = " (int r.size) "\n")
 		      (add-vars r)
 		      (return (inline r fenv)))
 		 _ -> #u)
@@ -288,7 +288,7 @@
     (define (safe-nvget-inline rands)
       (match rands with
 	({t=(node:primapp '%nvget _) subs=({t=(node:varref name) ...} . _)  ...} . _)
-	-> (let ((var (vars-get-var name)))
+	-> (let ((var (vars-get-var name (node/varref name))))
 	     (= 0 var.sets))
 	_ -> #f))
 
@@ -304,14 +304,14 @@
 		    (for-range
 			i n
 			(let ((formal (nth formals i))
-			      (fvar (vars-get-var formal))
+			      (fvar (vars-get-var formal fun))
 			      (rand (nth rands i)))
 			  (if (> fvar.sets 0)
 			      (PUSH complex i) ;; if a formal is assigned to, it must go into a let.
 			      (match rand.t with
 				(node:literal _) -> (PUSH simple i)
 				(node:varref arg)
-				-> (let ((avar (vars-get-var arg)))
+				-> (let ((avar (vars-get-var arg rand)))
 				     ;;(printf "formal: " (sym formal) " avar.sets=" (int avar.sets) " fvar.sets=" (int fvar.sets) "\n")
 				     (if (> avar.sets 0)
 					 (PUSH complex i)
@@ -394,7 +394,7 @@
     ;;  varref'd outside of the operator position).
 
     (define (fun-escapes name)
-      (vars-set-flag! name VFLAG-ESCAPES)
+      (vars-set-flag! name (node/varref name) VFLAG-ESCAPES)
       (PUSH escaping-funs name))
 
     (define (find-escaping-functions node parent)
@@ -407,7 +407,7 @@
 	     ;;   ((lambda ...) ...) to (let ...)
 	     _ -> (fun-escapes name))
 	(node:varref name)
-	-> (if (vars-get-flag name VFLAG-FUNCTION)
+	-> (if (vars-get-flag name node VFLAG-FUNCTION)
 	       (match parent.t with
 		 (node:call)
 		 ;; any function referenced in a non-rator position
@@ -421,7 +421,7 @@
       ;;(printf "maybe-var-escapes: " (sym name) "\n")
       (if (not (member-eq? name lenv))
 	  ;; reference to a free variable. flag it as escaping.
-	  (vars-set-flag! name VFLAG-ESCAPES)))
+	  (vars-set-flag! name (node/varref name) VFLAG-ESCAPES)))
 
     ;; XXX make sure we still need to know if particular variables escape.
 
@@ -710,10 +710,7 @@
 		    (if (null? remove)
 			node
 			(let ((new-names '())
-			      (new-inits '())
-			      ;; XXX remove when happy, this var only for the print
-			      (trimmed (map (lambda (i) (nth names i)) remove)))
-			  ;;(printf "trimming: " (join symbol->string ", " trimmed) "\n")
+			      (new-inits '()))
 			  (for-range
 			      i n
 			      (cond ((not (member-eq? i remove))
