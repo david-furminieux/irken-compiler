@@ -350,7 +350,7 @@
 		(set! current-function-cname cname)
 		(o.write (format "static void " cname " (void) {"))
 		(o.indent)
-		(if (vars-get-flag name VFLAG-ALLOCATES)
+		(if (vars-get-flag name (node/varref name) VFLAG-ALLOCATES)
 		    ;; XXX this only works because we disabled letreg around functions
 		    (emit-check-heap '() "0"))
 		(emit body)
