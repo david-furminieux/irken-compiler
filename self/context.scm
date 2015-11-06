@@ -1,5 +1,11 @@
 ;; -*- Mode: Irken -*-
 
+(define (getenv-or var default)
+  (let ((val (getenv var)))
+    (if (= 0 (string-length val))
+	default
+	val)))
+
 (define (make-options)
   {verbose		= #f
    nocompile		= #f
@@ -42,21 +48,22 @@
 
 ;; XXX a builtin flags object would be nice...
 
-(define (vars-get-var name)
+(define (vars-get-var name exp)
   (match (tree/member the-context.vars symbol-index<? name) with
-    (maybe:no) -> (error1 "vars-get-var: no such var" name)
-    (maybe:yes v) -> v))
+    (maybe:yes v) -> v
+    (maybe:no) -> (begin (pp-node exp) (error1 "vars-get-var: no such var" name))))
 
-(define (vars-get-flag name flag)
-  (let ((var (vars-get-var name)))
+(define (vars-get-flag name exp flag)
+  (let ((var (vars-get-var name exp)))
     (bit-get var.flags flag)))
 
-(define (vars-set-flag! name flag)
-  (let ((var (vars-get-var name)))
+(define (vars-set-flag! name exp flag)
+  (let ((var (vars-get-var name exp)))
     (set! var.flags (bit-set var.flags flag))))
 
-(define (vars-inc-calls! name flag)
-  (let ((var (vars-get-var name)))
+;; XXX currently unused
+(define (vars-inc-calls! name exp flag)
+  (let ((var (vars-get-var name exp)))
     (set! var.calls (+ 1 var.calls))))
 
 (define VFLAG-RECURSIVE 0) ;; function that is recursive
