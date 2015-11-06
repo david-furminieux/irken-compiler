@@ -94,7 +94,8 @@
   (let ((current-funs '(top)))
 
     (define (set-flag! flag)
-      (vars-set-flag! (car current-funs) flag))
+      (let ((name (car current-funs)))
+	(vars-set-flag! name (node/varref name) flag)))
 
     (define (cont free generator)
       (let ((reg (the-context.regalloc.alloc free)))
@@ -379,7 +380,7 @@
 	   (< (length names) 5)
 	   (not (some?
 		 (lambda (name)
-		   (vars-get-flag name VFLAG-FREEREF)
+		   (vars-get-flag name exp VFLAG-FREEREF)
 		   )
 		 names))))
 
@@ -387,7 +388,7 @@
       (match fun with
 	(node:varref name)
 	-> (and (node-get-flag exp NFLAG-RECURSIVE)
-		(not (vars-get-flag (car current-funs) VFLAG-ESCAPES)))
+		(not (vars-get-flag (car current-funs) exp VFLAG-ESCAPES)))
 	_ -> #f))
 
     (define (c-trcall depth name args lenv k)
@@ -408,7 +409,7 @@
 	       (let ((gen-invoke (if tail? gen-tail gen-invoke))
 		     (name (match fun.t with
 			     (node:varref name)
-			     -> (if (vars-get-flag name VFLAG-FUNCTION)
+			     -> (if (vars-get-flag name exp VFLAG-FUNCTION)
 				    (maybe:yes name)
 				    (maybe:no))
 			     _ -> (maybe:no)))
@@ -458,7 +459,7 @@
 		     (compile-store-args (+ i 1) offset (cdr args) tuple-reg free-regs lenv k))))))))
 
     (define (c-let-reg tail? formals subs lenv k)
-      (for-each (lambda (f) (vars-set-flag! f VFLAG-REG)) formals)
+      (for-each (lambda (f) (vars-set-flag! f exp VFLAG-REG)) formals)
       (define (loop names inits lenv regs)
 	(if (= 0 (length names))
 	    ;; note: the last 'init' is the body
