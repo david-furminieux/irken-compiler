@@ -59,11 +59,11 @@
 (define NFLAG-TAIL      3)
 (define NFLAG-NFLAGS    4)
 
-;;(typealias rnode
-;;   {t=node subs=(list rnode) size=int id=int type=type flags=int})
+(typealias rnode
+  {t=node subs=(list rnode) size=int id=int type=type flags=int})
 
-;(define (make-node t subs) : (node (list rnode) -> rnode)
-(define (make-node t subs)
+(define (make-node t subs) : (node (list rnode) -> rnode)
+;(define (make-node t subs)
   {t=t subs=subs size=(sum-size subs) id=(node-counter.inc) type=no-type flags=0}
   )
 
