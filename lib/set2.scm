@@ -13,7 +13,7 @@
     (if (self::in x) ;; note inline
 	#u
 	(set! self.list (list:cons x self.list))))
-  
+
   (define (get self)
     self.list)
 
