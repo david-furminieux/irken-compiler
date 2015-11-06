@@ -18,24 +18,14 @@
 ;;   however it is rare that one needs both deletion and purity, so feel free
 ;;   to use the 'pure' subset of this data structure thus.
 
-(define (node/make level key val left right)
+(typealias rtree {level=int key='a val='b left=rtree right=rtree})
+
+(define (node/make level key val left right) : (int 'a 'b rtree rtree -> rtree)
   { level = level
     key   = key
     val   = val
     left  = left
     right = right })
-
-;; Ok, this is interesting.  If I use the following definition of tree/nil:
-;;
-;; (define tree/nil
-;;   {level = 0
-;;    left  = tree/nil
-;;    right = tree/nil
-;;    key = (magic #u)
-;;    val = (magic #u)
-;;    })
-;;
-;; The typer will let me get away with this: (tree/nil).  Why?
 
 (define tree/nil
   (let ((node (node/make 0 (magic #u) (magic #u) (magic #u) (magic #u))))
@@ -45,7 +35,7 @@
 
 (define (tree/empty) tree/nil)
 
-(define (tree/skew d)
+(define (tree/skew d) : (rtree -> rtree)
   (if (and (> d.level 0)
 	   (= d.left.level d.level))
       (node/make
@@ -55,7 +45,7 @@
 	(tree/skew d.right)))
       d))
 
-(define (tree/split b)
+(define (tree/split b) : (rtree -> rtree)
   (if (and (= b.right.right.level b.level)
 	   (not (= b.level 0)))
       (node/make
@@ -65,7 +55,7 @@
       b))
 
 ;; urghhh, probably should have put '<' as the last arg.
-(define (tree/insert root < key val)
+(define (tree/insert root < key val) : (rtree ('a 'a -> bool) 'a 'b -> rtree)
   (let loop ((n root))
     (if (= n.level 0)
 	(node/make 1 key val tree/nil tree/nil)
