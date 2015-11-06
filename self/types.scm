@@ -5,13 +5,13 @@
 
 ;; temporarily disabled while working on typealias
 
-;; (typealias rtype {parent=(maybe type) pending=bool moo=(maybe type)})
+(typealias rtype {parent=(maybe type) pending=bool moo=(maybe type)})
 
 (datatype type
-  (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
-  (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
-  ;; (:tvar int rtype)
-  ;; (:pred symbol (list type) rtype)
+  ;; (:tvar int                {parent=(maybe type) pending=bool moo=(maybe type)})
+  ;; (:pred symbol (list type) {parent=(maybe type) pending=bool moo=(maybe type)})
+  (:tvar int rtype)
+  (:pred symbol (list type) rtype)
   )
 
 (define (pred name subs)
@@ -118,12 +118,16 @@
   (type:pred _ _ r) -> r)
 
 (define (type-find t)
-  (let ((trec (type->trec t)))
-    (match trec.parent with
-      (maybe:no)    -> t
-      (maybe:yes t0) -> (let ((p (type-find t0)))
-                         (set! trec.parent (maybe:yes p)) ;; path compression
-                         p))))
+  (let/cc return
+    (let ((trec (type->trec t)))
+      (match trec.parent with
+	(maybe:no)    -> t
+	(maybe:yes t0) -> (begin
+			    (if (eq? t t0) ;; test for t0 = moo(t0, ...)
+				(return t))
+			    (let ((p (type-find t0)))
+			      (set! trec.parent (maybe:yes p)) ;; path compression
+			      p))))))
 
 (define (type-union a b)
   (let ((pa (type-find a))
@@ -314,12 +318,12 @@
 		(match t with
 		  (type:pred name0 args _)
 		  -> (begin
-		       (printf "  pred compare " (sym name0) " = " (sym name) "\n")
+		       ;;(printf "  pred compare " (sym name0) " = " (sym name) "\n")
 		       (if (eq? name name0)
 			   ;; a recursive type alias.  moooo.
 			   ;; XXX what about args? assert null?
 			   (begin
-			     (printf "found recursion in type alias\n")
+			     ;;(printf "found recursion in type alias\n")
 			     (set! recursive? #t)
 			     moovar
 			     )
