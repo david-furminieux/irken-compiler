@@ -33,12 +33,6 @@
 	      (part2 (substring header pos1 (string-length header))))
 	  (:header part0 part1 part2)))))
 
-(define (getenv-or var default)
-  (let ((val (getenv var)))
-    (if (= 0 (string-length val))
-	default
-	val)))
-
 (include "self/flags.scm")
 
 (define (invoke-cc base options)
