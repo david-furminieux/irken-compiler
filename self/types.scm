@@ -79,8 +79,6 @@
 (define (rpre t)                (pred 'pre (LIST t)))
 (define (make-label sym)        (pred sym '()))
 
-;; rproduct (rlabel (parent,pre(maybe(type)),rlabel (pending,pre(bool),rlabel(moo,pre(maybe(type)),rdefault(abs)))))
-
 (define rlabel-repr
   (type:pred label () _) (type:pred 'pre (t) _) -> (format (sym label) "=" (type-repr t))
   (type:pred label () _) (type:pred 'abs () _)  -> (format (sym label) "=#f")
@@ -91,7 +89,8 @@
 (define row-repr
   (type:pred 'rlabel (label type rest) _)         -> (format (rlabel-repr label type) " " (row-repr rest))
   (type:pred 'rdefault ((type:pred 'abs () _)) _) -> ""
-  (type:tvar id _)                                -> "..."
+  ;;(type:tvar id _)                                -> "..."
+  (type:tvar id _)                                -> (format "t" (int id) "...")
   x                                               -> (format "<confused:" (type-repr x) ">")
   )
 
