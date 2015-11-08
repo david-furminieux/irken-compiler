@@ -1,5 +1,8 @@
 ;; -*- Mode: Irken -*-
 
+;; avoid finding spurious recursion in row labels
+(define moo-avoid '(rlabel pre abs rdefault))
+
 (define (apply-subst t)
   (define (p t)
     (let ((t (type-find t))
@@ -9,11 +12,12 @@
 	    (set! trec.moo (maybe:yes tv))
 	    tv)
 	  (match t with
-	    (type:tvar _ _)	 -> t
-	    (type:pred 'moo _ _) -> t
+	    (type:tvar _ _)	    -> t
+	    (type:pred 'moo _ _)    -> t ;; don't moo a moo
 	    (type:pred name subs _)
 	    -> (begin
-		 (set! trec.pending #t)
+		 (if (not (member? name moo-avoid eq?))
+		     (set! trec.pending #t))
 		 (let ((r (pred name (map p subs))))
 		   (set! trec.pending #f)
 		   (match trec.moo with
@@ -38,58 +42,35 @@
 	 (format "\nType Error:\n\t" (type-repr ut0) "\n\t" (type-repr ut1) "\n"))
 	(error "type error")))
 
-    (define in-trail?
-      () a b -> #f
-      ((:pair a0 b0) . tl) a b -> (or (and (eq? a0 a) (eq? b0 b)) (in-trail? tl a b))
-      )
-
-    (define (print-trail trail)
-      (printf "(trail ")
-      (let loop ((t trail))
-	(match t with
-	  () -> #u
-	  ((:pair a b) . tl)
-	  -> (begin
-	       (printf "("(type-repr a) " " (type-repr b) ")")
-	       (loop tl))))
-      (printf ")\n"))
-
-    (define (U trail t0 t1)
+    (define (U t0 t1)
       (when the-context.options.debugtyping
-	    (printf "    ----U " (type-repr t0) " -- " (type-repr t1) "\n")
-	    )
+	    (printf "    ----U " (type-repr t0) " -- " (type-repr t1) "\n"))
       (let/cc return
 	  (let ((u (type-find t0))
 		(v (type-find t1)))
 	    (when the-context.options.debugtyping
-		  (print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n"))
-		  (printf "    ") (print-trail trail))
+		  (print-string (format "    ----: " (type-repr u) " -- " (type-repr v) "\n")))
 	    (if (not (eq? u v))
 		(begin
-		  ;; C93: rule 1
-		  (if (in-trail? trail u v)
-		      (begin
-			(printf "C93: rule 1 [yes]\n")
-			(return #u)))
 		  (match u v with
-		    (type:tvar _ _) _ -> #u
-		    _ (type:tvar _ _) -> #u
 		    (type:pred pu su _) (type:pred pv sv _)
 		    -> (match pu pv with
 			 ;; row and moo vars - early exit to avoid union
-			 'moo _	     -> (return (U-moo trail u v))
-			 _ 'moo	     -> (return (U-moo trail v u))
-			 'rlabel _   -> (return (U-row trail u v))
-			 _ 'rlabel   -> (return (U-row trail v u))
-			 'rdefault _ -> (return (U-row trail u v))
-			 _ 'rdefault -> (return (U-row trail v u))
+			 'moo _	     -> (return (U-moo u v))
+			 _ 'moo	     -> (return (U-moo v u))
+			 'rlabel _   -> (return (U-row u v))
+			 _ 'rlabel   -> (return (U-row v u))
+			 'rdefault _ -> (return (U-row u v))
+			 _ 'rdefault -> (return (U-row v u))
 			 _ _ -> (if (or (not (eq? pu pv))
 					(not (= (length su) (length sv))))
 				    (type-error t0 t1)
-				    #u)))
+				    #u))
+		    _ _ -> #u
+		    )
 		  (type-union u v)
 		  (match u v with
-		    (type:pred _ su _) (type:pred _ sv _) -> (for-each2 (lambda (a b) (U trail a b)) su sv)
+		    (type:pred _ su _) (type:pred _ sv _) -> (for-each2 (lambda (a b) (U a b)) su sv)
 		    _ _ -> #u))
 		))))
 
@@ -122,69 +103,65 @@
     ;; 2350    1  100                 primapp %rmake #f : {}
 
 
-    (define (U-row trail u v)
+    (define (U-row u v)
       (match u v with
 	;; u and v are both rlabel
 	(type:pred 'rlabel (l0 t0 d0) _) (type:pred 'rlabel (l1 t1 d1) _)
 	-> (cond ((label=? l0 l1)
 		  ;; identical head labels, normal unify
-		  (U trail t0 t1)
-		  (U trail d0 d1))
+		  (U t0 t1)
+		  (U d0 d1))
 		 (else
 		  ;; distinct head labels, C-MUTATE-LL
 		  (let ((x (new-tvar)))
-		    (U trail d0 (rlabel l1 t1 x))
-		    (U trail d1 (rlabel l0 t0 x)))))
+		    (U d0 (rlabel l1 t1 x))
+		    (U d1 (rlabel l0 t0 x)))))
 	;; u is rlabel, v is not
 	(type:pred 'rlabel (l0 t0 d0) _) (type:pred p1 s1 _)
 	-> (cond ((eq? p1 'rdefault)
 		  ;; C-MUTATE-DL
-		  (U trail (car s1) t0)
-		  (U trail v d0))
+		  (U (car s1) t0)
+		  (U v d0))
 		 (else
 		  ;; some other predicate
 		  ;; S-MUTATE-GL
 		  (let ((n (length s1))
 			(tvars0 (map-range i n (new-tvar)))
 			(tvars1 (map-range i n (new-tvar))))
-		    (U trail (pred p1 tvars0) t0)
-		    (U trail (pred p1 tvars1) d0)
+		    (U (pred p1 tvars0) t0)
+		    (U (pred p1 tvars1) d0)
 		    (for-range i n
-			       (U trail (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
+			       (U (nth s1 i) (rlabel l0 (nth tvars0 i) (nth tvars1 i)))
 			       ))))
 	;; both are rdefault
 	(type:pred 'rdefault (t0) _) (type:pred 'rdefault (t1) _)
-	-> (U trail t0 t1)
+	-> (U t0 t1)
 	;; ensure that u is the rdefault/δ
 	_ (type:pred 'rdefault (t1) _)
-	-> (U-row trail v u)
+	-> (U-row v u)
 	;; u is rdefault, v is some other predicate, S-MUTATE-GD
 	(type:pred 'rdefault (t0) _) (type:pred p1 s1 _)
 	-> (let ((n (length s1))
 		 (tvars (map-range i n (new-tvar))))
-	     (U trail t0 (pred p1 tvars))
+	     (U t0 (pred p1 tvars))
 	     (for-range i n
-			(U trail (nth s1 i) (rdefault (nth tvars i)))))
+			(U (nth s1 i) (rdefault (nth tvars i)))))
 	;; anything else is an error
 	_ _ -> (type-error u v)
 	))
 
-    (define (U-moo trail u v)
+    (define (U-moo u v)
       ;;(printf " * U-moo u: " (type-repr u) " v: " (type-repr v) "\n")
       (match u v with
 	;; C93 rule 4.1
-	(type:pred 'moo (mu u0) _) (type:pred 'moo (mv v0) _) -> (U (list:cons (:pair mu v) trail) u0 v0)
+	(type:pred 'moo (mu u0) _) (type:pred 'moo (mv v0) _) -> (U u0 v0)
 	;; C93 rule 4.2, 4.3
-	(type:pred 'moo (mu u0) _) _                          -> (begin
-								   (U (list:cons (:pair mu v) trail) u0 v)
-								   (type-union mu u)
-								   ;;(type-union u v)
-								   )
+	(type:pred 'moo (mu u0) _) _                          -> (begin (U u0 v) (type-union mu u))
 	_ _ -> (impossible) ;; note: U swaps u/v if moo is in v.
 	)
       )
 
-    (U '() t0 t1)
+    (U t0 t1)
     )
 
   (define (instantiate-type-scheme gens type)
