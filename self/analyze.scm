@@ -196,7 +196,7 @@
 	(maybe:yes num) -> (* num calls)
 	(maybe:no) -> calls))
 
-    (define (inline node fenv)
+    (define (inline node fenv) : (rnode rtree -> rnode)
 
       (let/cc return
 

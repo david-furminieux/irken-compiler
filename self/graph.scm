@@ -19,7 +19,7 @@
 	;;(tree/insert! self.t < (symbol->index sym) sym)
 	(set! self.t (tree/insert self.t < (symbol->index sym) sym))
 	))
-  
+
   (define (get self)
     (tree/values self.t))
 
