@@ -33,7 +33,8 @@
     (set! node.right node)
     node))
 
-(define (tree/empty) tree/nil)
+(define (tree/empty) : ( -> rtree)
+  tree/nil)
 
 (define (tree/skew d) : (rtree -> rtree)
   (if (and (> d.level 0)
@@ -76,7 +77,7 @@
 
 ;; XXX make this pure.
 
-(define (tree/delete root key key-less? key-equal?)
+(define (tree/delete root key key-less? key-equal?) : (rtree 'a ('a 'a -> bool) ('a 'a -> bool) -> rtree)
   (let recur ((root root) (key key))
     (if (not (eq? root tree/nil))
 	(if (key-equal? key root.key)
@@ -104,14 +105,14 @@
 	root
 	)))
 
-(define (tree/member root < key)
+(define (tree/member root < key) : (rtree ('a 'a -> bool) 'a -> (maybe 'b))
   (let member0 ((t root))
     (cond ((= t.level 0) (maybe:no))
 	  ((< key t.key) (member0 t.left))
 	  ((< t.key key) (member0 t.right))
 	  (else (maybe:yes t.val)))))
 
-(define (tree/inorder p t)
+(define (tree/inorder p t) : (('a 'b -> undefined) rtree -> undefined)
   (let recur ((t t))
     (cond ((= t.level 0) #u)
 	  (else
@@ -119,7 +120,7 @@
 	   (p t.key t.val)
 	   (recur t.right)))))
 
-(define (tree/reverse p t)
+(define (tree/reverse p t) : (('a 'b -> undefined) rtree -> undefined)
   (let recur ((t t))
     (cond ((= t.level 0) #u)
 	  (else
@@ -127,17 +128,17 @@
 	   (p t.key t.val)
 	   (recur t.left)))))
 
-(define (tree/keys t)
+(define (tree/keys t) : (rtree -> (list 'a))
   (let ((r '()))
     (tree/reverse (lambda (k v) (PUSH r k)) t)
     r))
 
-(define (tree/values t)
+(define (tree/values t) : (rtree -> (list 'b))
   (let ((r '()))
     (tree/reverse (lambda (k v) (PUSH r v)) t)
     r))
 
-(define (tree/dump d p t)
+(define (tree/dump d p t) : (int ('a 'b -> undefined) rtree -> undefined)
   (let recur ((d d) (t t))
     (if (= t.level 0)
 	#u
